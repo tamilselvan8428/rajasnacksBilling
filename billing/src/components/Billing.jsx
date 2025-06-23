@@ -15,7 +15,8 @@ import { useReactToPrint } from 'react-to-print';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை / Our Shop' }) => {
+const Billing = ({ language = 'english', shopName = 'எங்கள் கடை (Our Shop)' }) => {
+  // State variables
   const [customerName, setCustomerName] = useState('');
   const [mobileNumber, setMobileNumber] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -31,25 +32,43 @@ const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை 
   const anchorRef = useRef(null);
   const billPreviewRef = useRef(null);
 
+  // Load stock items from localStorage
   useEffect(() => {
     const savedStock = localStorage.getItem('stockItems');
     if (savedStock) {
       setStockItems(JSON.parse(savedStock));
+    } else {
+      // Sample stock items (can be replaced with API call)
+      const sampleItems = [
+        { id: 1, name: "Rice", nameTamil: "அரிசி", price: 50 },
+        { id: 2, name: "Sugar", nameTamil: "சீனி", price: 40 },
+        { id: 3, name: "Oil", nameTamil: "எண்ணெய்", price: 120 },
+      ];
+      setStockItems(sampleItems);
+      localStorage.setItem('stockItems', JSON.stringify(sampleItems));
     }
   }, []);
 
+  // Filter items based on search query
   const filteredItems = stockItems.filter(item => 
     item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
     (item.nameTamil && item.nameTamil.includes(searchQuery))
   );
-
+   const styles = {
+  tamilFont: {
+    fontFamily: "'Noto Sans Tamil', sans-serif",
+    direction: 'ltr',
+    unicodeBidi: 'embed'
+  }
+};
+  // Add item to bill
   const handleAddItem = () => {
     if (selectedItem) {
       const newItem = {
         id: Date.now(),
         productId: selectedItem.id,
         productName: selectedItem.name,
-        productNameTamil: selectedItem.nameTamil || selectedItem.name,
+        productNameTamil: selectedItem.nameTamil,
         quantity: quantity,
         price: selectedItem.price,
         total: quantity * selectedItem.price
@@ -62,6 +81,7 @@ const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை 
     }
   };
 
+  // Remove item from bill
   const handleRemoveItem = (id) => {
     setBillItems(billItems.filter(item => item.id !== id));
     if (editingItemId === id) {
@@ -69,12 +89,14 @@ const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை 
     }
   };
 
+  // Edit item in bill
   const handleEditItem = (item) => {
     setEditingItemId(item.id);
     setEditQuantity(item.quantity);
     setEditPrice(item.price);
   };
 
+  // Save edited item
   const handleSaveEdit = () => {
     setBillItems(billItems.map(item => 
       item.id === editingItemId
@@ -89,103 +111,126 @@ const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை 
     setEditingItemId(null);
   };
 
+  // Cancel editing
   const handleCancelEdit = () => {
     setEditingItemId(null);
   };
 
+  // Calculate total bill amount
   const calculateTotal = () => {
     return billItems.reduce((sum, item) => sum + item.total, 0);
   };
 
-  const generatePDF = () => {
-    if (billItems.length === 0) {
-      alert(language === 'english' ? 'No items to generate PDF!' : 'PDF உருவாக்க பொருட்கள் இல்லை!');
-      return;
-    }
-    if (!customerName || !mobileNumber) {
-      alert(language === 'english' ? 'Please enter customer name and mobile number!' : 'வாடிக்கையாளர் பெயர் மற்றும் மொபைல் எண்ணை உள்ளிடவும்!');
-      return;
-    }
+  // Generate Tamil PDF bill
+const generateTamilPDF = async () => {
+  if (billItems.length === 0) {
+    alert('No items to generate PDF!');
+    return;
+  }
+  if (!customerName || !mobileNumber) {
+    alert('Please enter customer name and mobile number!');
+    return;
+  }
 
-    const doc = new jsPDF();
+  const doc = new jsPDF();
+
+  try {
+    // 1. Load the Tamil font file from the correct path
+    const fontPath = '/fonts/NotoSansTamil-Regular.ttf';
+    const response = await fetch(fontPath);
     
-    // Title
-    doc.setFontSize(20);
-    doc.text(
-      language === 'english' ? shopName.split(' / ')[1] || shopName : shopName.split(' / ')[0], 
-      105, 20, { align: 'center' }
-    );
+    if (!response.ok) {
+      throw new Error(`Font file not found (HTTP ${response.status}) at ${fontPath}`);
+    }
     
-    doc.setFontSize(16);
-    doc.text(
-      language === 'english' ? 'BILL' : 'பில்', 
-      105, 30, { align: 'center' }
-    );
+    // 2. Convert font to Base64
+    const fontData = await response.arrayBuffer();
+    const binaryString = Array.from(new Uint8Array(fontData))
+      .map(byte => String.fromCharCode(byte))
+      .join('');
+    const fontBase64 = window.btoa(binaryString);
 
-    // Customer details
-    doc.setFontSize(12);
-    doc.text(
-      language === 'english' ? `Customer: ${customerName}` : `வாடிக்கையாளர்: ${customerName}`, 
-      20, 40
-    );
-    doc.text(
-      language === 'english' ? `Mobile: ${mobileNumber}` : `மொபைல் எண்: ${mobileNumber}`, 
-      20, 50
-    );
-    doc.text(
-      language === 'english' ? `Date: ${date}` : `தேதி: ${date}`, 
-      20, 60
-    );
+    // 3. Add font to jsPDF
+    doc.addFileToVFS('NotoSansTamil.ttf', fontBase64);
+    doc.addFont('NotoSansTamil.ttf', 'NotoSansTamil', 'normal');
+    doc.setFont('NotoSansTamil');
+    
+    // 4. Verify font loaded
+    if (!doc.getFontList()['NotoSansTamil']) {
+      throw new Error('Font loaded but not available in font list');
+    }
+  } catch (error) {
+    console.error('PDF Generation Error:', error);
+    doc.setFont('helvetica'); // Fallback to built-in font
+  }
 
-    // Table data
-    const tableData = billItems.map((item, index) => [
-      index + 1,
-      language === 'english' ? item.productName : item.productNameTamil,
-      item.quantity,
-      `₹${item.price.toFixed(2)}`,
-      `₹${item.total.toFixed(2)}`
-    ]);
+  // Rest of your PDF generation code remains the same...
+  doc.setFontSize(20);
+  doc.text(shopName, 105, 20, { align: 'center' });
+  
+  // Bill title
+  doc.setFontSize(16);
+  doc.text('பில்', 105, 30, { align: 'center' });
 
-    // Add table using autoTable
-    autoTable(doc, {
-      head: [
-        [
-          language === 'english' ? 'S.No' : 'வ.எண்',
-          language === 'english' ? 'Product' : 'பொருள்',
-          language === 'english' ? 'Qty' : 'அளவு',
-          language === 'english' ? 'Price' : 'விலை',
-          language === 'english' ? 'Total' : 'மொத்தம்'
-        ]
-      ],
-      body: tableData,
-      startY: 70,
-      styles: { font: 'helvetica', fontSize: 10 },
-      headStyles: { fillColor: [22, 160, 133] }
-    });
+  // Customer details
+  doc.setFontSize(12);
+  doc.text(`வாடிக்கையாளர்: ${customerName}`, 20, 40);
+  doc.text(`மொபைல் எண்: ${mobileNumber}`, 20, 50);
+  doc.text(`தேதி: ${date}`, 20, 60);
 
-    // Total
-    const finalY = doc.lastAutoTable.finalY + 10;
-    doc.setFontSize(14);
-    doc.text(
-      language === 'english' ? 'Grand Total:' : 'மொத்த தொகை:', 
-      140, finalY
-    );
-    doc.text(`₹${calculateTotal().toFixed(2)}`, 170, finalY);
+  // Prepare table data
+  const tableData = billItems.map((item, index) => [
+    index + 1,
+    item.productNameTamil || item.productName,
+    item.quantity,
+    `₹${item.price.toFixed(2)}`,
+    `₹${item.total.toFixed(2)}`
+  ]);
 
-    // Thank you message
-    doc.setFontSize(12);
-    doc.text(
-      language === 'english' ? 'Thank you for your purchase!' : 'உங்கள் வாங்குதலுக்கு நன்றி!', 
-      105, finalY + 20, { align: 'center' }
-    );
+  // Generate the table
+  autoTable(doc, {
+    head: [['வ.எண்', 'பொருள்', 'அளவு', 'விலை', 'மொத்தம்']],
+    body: tableData,
+    startY: 70,
+    styles: { 
+      font: doc.getFont().fontName,
+      fontSize: 10,
+      cellPadding: 3,
+      overflow: 'linebreak'
+    },
+    headStyles: { 
+      fillColor: [22, 160, 133],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold'
+    },
+    columnStyles: {
+      0: { halign: 'center' }, // Serial number
+      2: { halign: 'center' }, // Quantity
+      3: { halign: 'right' },  // Price
+      4: { halign: 'right' }   // Total
+    }
+  });
 
-    doc.save(`${customerName}_${date}_bill.pdf`);
-  };
+  // Calculate and display total
+  const finalY = doc.lastAutoTable.finalY + 10;
+  doc.setFontSize(14);
+  doc.text('மொத்த தொகை:', 140, finalY);
+  doc.text(`₹${calculateTotal().toFixed(2)}`, 170, finalY);
 
+  // Thank you message
+  doc.setFontSize(12);
+  doc.text('உங்கள் வாங்குதலுக்கு நன்றி!', 105, finalY + 20, { align: 'center' });
+
+  // Save the PDF
+  doc.save(`${customerName}_${date}_bill.pdf`);
+};
+
+  // Print bill
   const handlePrint = useReactToPrint({
     content: () => billPreviewRef.current,
   });
 
+  // Search product functionality
   const handleSearchChange = (e) => {
     setSearchQuery(e.target.value);
     setOpenSuggestions(e.target.value.length > 0);
@@ -194,16 +239,19 @@ const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை 
     }
   };
 
+  // Select product from search results
   const handleSelectItem = (item) => {
     setSelectedItem(item);
-    setSearchQuery(language === 'english' ? item.name : item.nameTamil || item.name);
+    setSearchQuery(item.name);
     setOpenSuggestions(false);
   };
 
+  // Close search suggestions
   const handleCloseSuggestions = () => {
     setOpenSuggestions(false);
   };
 
+  // Translations (English & Tamil)
   const translations = {
     english: {
       customerName: 'Customer Name',
@@ -215,7 +263,7 @@ const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை 
       total: 'Total',
       addItem: 'Add Item',
       printBill: 'Print Bill',
-      saveBill: 'Save Bill',
+      downloadTamilPdf: 'Download Tamil PDF',
       action: 'Action',
       noItems: 'No items added to bill',
       totalAmount: 'Total Amount',
@@ -230,23 +278,24 @@ const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை 
       quantity: 'அளவு',
       price: 'விலை',
       total: 'மொத்தம்',
-      addItem: 'பொருளை சேர்',
-      printBill: 'பில்லை அச்சிடு',
-      saveBill: 'பில்லை சேமி',
+      addItem: 'சேர்க்க',
+      printBill: 'அச்சிடு',
+      downloadTamilPdf: 'டவுன்லோட் (Tamil PDF)',
       action: 'செயல்',
-      noItems: 'பில்லில் பொருட்கள் சேர்க்கப்படவில்லை',
+      noItems: 'பில் உருப்படிகள் இல்லை',
       totalAmount: 'மொத்த தொகை',
-      searchProducts: 'பொருட்களை தேடு',
-      noProductsFound: 'பொருட்கள் எதுவும் கிடைக்கவில்லை'
+      searchProducts: 'தேடுதல்',
+      noProductsFound: 'பொருட்கள் இல்லை'
     }
   };
 
   const t = translations[language];
 
   return (
-    <div style={{ fontFamily: "'Noto Sans Tamil', sans-serif" }}>
-      <h2>{language === 'english' ? 'Billing' : 'பில் செய்தல்'}</h2>
+    <div style={{ fontFamily: "'Noto Sans Tamil', 'Roboto', sans-serif", padding: '20px' }}>
+      <h2>Billing System</h2>
       
+      {/* Customer Details */}
       <div className="customer-details">
         <TextField
           label={t.customerName}
@@ -277,6 +326,7 @@ const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை 
         />
       </div>
 
+      {/* Product Search & Add */}
       <div className="add-items" style={{ marginTop: '20px', position: 'relative' }}>
         <div ref={anchorRef}>
           <TextField
@@ -301,6 +351,7 @@ const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை 
           />
         </div>
 
+        {/* Search Suggestions */}
         <Popper
           open={openSuggestions && filteredItems.length > 0}
           anchorEl={anchorRef.current}
@@ -315,12 +366,9 @@ const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை 
                   <MenuItem
                     key={item.id}
                     onClick={() => handleSelectItem(item)}
-                    style={{ fontFamily: "'Noto Sans Tamil', sans-serif" }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
-                      <span>
-                        {language === 'english' ? item.name : item.nameTamil || item.name}
-                      </span>
+                      <span>{item.name} ({item.nameTamil})</span>
                       <span style={{ color: '#666', marginLeft: '10px' }}>
                         ₹{item.price.toFixed(2)}
                       </span>
@@ -332,6 +380,7 @@ const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை 
           </ClickAwayListener>
         </Popper>
 
+        {/* Quantity Input */}
         {selectedItem && (
           <div style={{ display: 'flex', alignItems: 'center', marginTop: '10px' }}>
             <TextField
@@ -346,6 +395,7 @@ const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை 
           </div>
         )}
 
+        {/* Add Item Button */}
         <Button
           variant="contained"
           color="primary"
@@ -359,6 +409,7 @@ const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை 
         </Button>
       </div>
 
+      {/* Bill Items Table */}
       <TableContainer component={Paper} style={{ marginTop: '20px' }}>
         <Table>
           <TableHead>
@@ -377,7 +428,7 @@ const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை 
                 <TableRow key={item.id}>
                   <TableCell>{index + 1}</TableCell>
                   <TableCell>
-                    {language === 'english' ? item.productName : item.productNameTamil}
+                    {language === 'tamil' ? (item.productNameTamil || item.productName) : item.productName}
                   </TableCell>
                   <TableCell>
                     {editingItemId === item.id ? (
@@ -415,7 +466,7 @@ const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை 
                           onClick={handleSaveEdit}
                           style={{ marginRight: '5px' }}
                         >
-                          {language === 'english' ? 'Save' : 'சேமி'}
+                          Save
                         </Button>
                         <Button
                           variant="outlined"
@@ -424,7 +475,7 @@ const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை 
                           startIcon={<CancelIcon />}
                           onClick={handleCancelEdit}
                         >
-                          {language === 'english' ? 'Cancel' : 'ரத்து செய்'}
+                          Cancel
                         </Button>
                       </>
                     ) : (
@@ -437,7 +488,7 @@ const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை 
                           onClick={() => handleEditItem(item)}
                           style={{ marginRight: '5px' }}
                         >
-                          {language === 'english' ? 'Edit' : 'திருத்து'}
+                          Edit
                         </Button>
                         <Button
                           variant="outlined"
@@ -446,7 +497,7 @@ const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை 
                           startIcon={<DeleteIcon />}
                           onClick={() => handleRemoveItem(item.id)}
                         >
-                          {language === 'english' ? 'Remove' : 'நீக்கு'}
+                          Remove
                         </Button>
                       </>
                     )}
@@ -464,6 +515,7 @@ const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை 
         </Table>
       </TableContainer>
 
+      {/* Bill Actions (Total, Print, PDF) */}
       {billItems.length > 0 && (
         <div className="bill-actions" style={{ marginTop: '20px', display: 'flex', gap: '10px' }}>
           <h3 style={{ flexGrow: 1 }}>
@@ -474,10 +526,10 @@ const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை 
             variant="contained"
             color="primary"
             startIcon={<PdfIcon />}
-            onClick={generatePDF}
+            onClick={generateTamilPDF}
             disabled={!customerName || !mobileNumber}
           >
-            {language === 'english' ? 'Download PDF' : 'PDF பதிவிறக்கு'}
+            {t.downloadTamilPdf}
           </Button>
           
           <Button
@@ -492,55 +544,33 @@ const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை 
         </div>
       )}
 
-      {/* Hidden Bill Preview for printing */}
+      {/* Hidden Bill Preview for Printing */}
       <div style={{ display: 'none' }}>
-        <div ref={billPreviewRef} style={{ padding: '20px', fontFamily: "'Noto Sans Tamil', sans-serif" }}>
-          <h2 style={{ textAlign: 'center' }}>
-            {language === 'english' ? shopName.split(' / ')[1] || shopName : shopName.split(' / ')[0]}
-          </h2>
-          <h3 style={{ textAlign: 'center' }}>
-            {language === 'english' ? 'BILL' : 'பில்'}
-          </h3>
+        <div ref={billPreviewRef} style={{ padding: '20px' }}>
+          <h2 style={{ textAlign: 'center' }}>{shopName}</h2>
+          <h3 style={{ textAlign: 'center' }}>BILL</h3>
           
           <div style={{ marginBottom: '20px' }}>
-            <p>
-              <strong>{language === 'english' ? 'Customer:' : 'வாடிக்கையாளர்:'}</strong> {customerName}
-            </p>
-            <p>
-              <strong>{language === 'english' ? 'Mobile:' : 'மொபைல் எண்:'}</strong> {mobileNumber}
-            </p>
-            <p>
-              <strong>{language === 'english' ? 'Date:' : 'தேதி:'}</strong> {date}
-            </p>
+            <p><strong>Customer:</strong> {customerName}</p>
+            <p><strong>Mobile:</strong> {mobileNumber}</p>
+            <p><strong>Date:</strong> {date}</p>
           </div>
           
           <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px' }}>
             <thead>
               <tr style={{ backgroundColor: '#f5f5f5' }}>
-                <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>
-                  {language === 'english' ? 'S.No' : 'வ.எண்'}
-                </th>
-                <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>
-                  {language === 'english' ? 'Product' : 'பொருள்'}
-                </th>
-                <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>
-                  {language === 'english' ? 'Qty' : 'அளவு'}
-                </th>
-                <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>
-                  {language === 'english' ? 'Price' : 'விலை'}
-                </th>
-                <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>
-                  {language === 'english' ? 'Total' : 'மொத்தம்'}
-                </th>
+                <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>S.No</th>
+                <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>Product</th>
+                <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>Qty</th>
+                <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>Price</th>
+                <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>Total</th>
               </tr>
             </thead>
             <tbody>
               {billItems.map((item, index) => (
                 <tr key={item.id}>
                   <td style={{ padding: '8px', border: '1px solid #ddd' }}>{index + 1}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>
-                    {language === 'english' ? item.productName : item.productNameTamil}
-                  </td>
+                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{item.productName}</td>
                   <td style={{ padding: '8px', border: '1px solid #ddd' }}>{item.quantity}</td>
                   <td style={{ padding: '8px', border: '1px solid #ddd' }}>₹{item.price.toFixed(2)}</td>
                   <td style={{ padding: '8px', border: '1px solid #ddd' }}>₹{item.total.toFixed(2)}</td>
@@ -550,13 +580,11 @@ const Billing = ({ language = 'tamil', shopName = 'எங்கள் கடை 
           </table>
           
           <div style={{ textAlign: 'right', marginTop: '20px' }}>
-            <h3>
-              {language === 'english' ? 'Grand Total:' : 'மொத்த தொகை:'} ₹{calculateTotal().toFixed(2)}
-            </h3>
+            <h3>Grand Total: ₹{calculateTotal().toFixed(2)}</h3>
           </div>
           
           <div style={{ textAlign: 'center', marginTop: '40px' }}>
-            <p>{language === 'english' ? 'Thank you for your purchase!' : 'உங்கள் வாங்குதலுக்கு நன்றி!'}</p>
+            <p>Thank you for your purchase!</p>
           </div>
         </div>
       </div>

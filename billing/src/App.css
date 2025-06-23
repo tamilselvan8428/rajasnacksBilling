@@ -40,3 +40,14 @@
 .read-the-docs {
   color: #888;
 }
+/* In your CSS file or style tag */
+@font-face {
+  font-family: 'TamilFont';
+  src: local('Arial Unicode MS'), local('Latha'), 
+       url('https://fonts.googleapis.com/css2?family=Noto+Sans+Tamil&display=swap');
+  unicode-range: U+0B80-0BFF;
+}
+
+body {
+  font-family: 'TamilFont', 'Arial Unicode MS', sans-serif;
+}

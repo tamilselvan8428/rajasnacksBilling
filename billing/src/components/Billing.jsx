@@ -15,10 +15,11 @@ import { useReactToPrint } from 'react-to-print';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-const Billing = ({ language = 'english', shopName = 'எங்கள் கடை (Our Shop)' }) => {
+const Billing = ({ language = 'english', shopName = 'ராஜா ஸ்நாக்ஸ் (RAJA SNACKS)' }) => {
   // State variables
   const [customerName, setCustomerName] = useState('');
   const [mobileNumber, setMobileNumber] = useState('');
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [stockItems, setStockItems] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -29,6 +30,9 @@ const Billing = ({ language = 'english', shopName = 'எங்கள் கட�
   const [editQuantity, setEditQuantity] = useState(1);
   const [editPrice, setEditPrice] = useState(0);
   const [openSuggestions, setOpenSuggestions] = useState(false);
+  const [printError, setPrintError] = useState(null);
+  const [isPrinting, setIsPrinting] = useState(false);
+  
   const anchorRef = useRef(null);
   const billPreviewRef = useRef(null);
 
@@ -38,29 +42,36 @@ const Billing = ({ language = 'english', shopName = 'எங்கள் கட�
     if (savedStock) {
       setStockItems(JSON.parse(savedStock));
     } else {
-      // Sample stock items (can be replaced with API call)
-      const sampleItems = [
-        { id: 1, name: "Rice", nameTamil: "அரிசி", price: 50 },
-        { id: 2, name: "Sugar", nameTamil: "சீனி", price: 40 },
-        { id: 3, name: "Oil", nameTamil: "எண்ணெய்", price: 120 },
-      ];
-      setStockItems(sampleItems);
-      localStorage.setItem('stockItems', JSON.stringify(sampleItems));
+      alert('No stock items found! Please add items to the stock management section.');
     }
   }, []);
+
+  useEffect(() => {
+    if (highlightedIndex >= 0 && anchorRef.current) {
+      const menuItems = anchorRef.current.querySelectorAll('.MuiMenuItem-root');
+      if (menuItems[highlightedIndex]) {
+        menuItems[highlightedIndex].scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest'
+        });
+      }
+    }
+  }, [highlightedIndex]);
 
   // Filter items based on search query
   const filteredItems = stockItems.filter(item => 
     item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
     (item.nameTamil && item.nameTamil.includes(searchQuery))
   );
-   const styles = {
-  tamilFont: {
-    fontFamily: "'Noto Sans Tamil', sans-serif",
-    direction: 'ltr',
-    unicodeBidi: 'embed'
-  }
-};
+
+  const styles = {
+    tamilFont: {
+      fontFamily: "'Noto Sans Tamil', sans-serif",
+      direction: 'ltr',
+      unicodeBidi: 'embed'
+    }
+  };
+
   // Add item to bill
   const handleAddItem = () => {
     if (selectedItem) {
@@ -122,112 +133,136 @@ const Billing = ({ language = 'english', shopName = 'எங்கள் கட�
   };
 
   // Generate Tamil PDF bill
-const generateTamilPDF = async () => {
-  if (billItems.length === 0) {
-    alert('No items to generate PDF!');
-    return;
-  }
-  if (!customerName || !mobileNumber) {
-    alert('Please enter customer name and mobile number!');
-    return;
-  }
-
-  const doc = new jsPDF();
-
-  try {
-    // 1. Load the Tamil font file from the correct path
-    const fontPath = '/fonts/NotoSansTamil-Regular.ttf';
-    const response = await fetch(fontPath);
-    
-    if (!response.ok) {
-      throw new Error(`Font file not found (HTTP ${response.status}) at ${fontPath}`);
+  const generateTamilPDF = async () => {
+    if (billItems.length === 0) {
+      alert('No items to generate PDF!');
+      return;
     }
-    
-    // 2. Convert font to Base64
-    const fontData = await response.arrayBuffer();
-    const binaryString = Array.from(new Uint8Array(fontData))
-      .map(byte => String.fromCharCode(byte))
-      .join('');
-    const fontBase64 = window.btoa(binaryString);
-
-    // 3. Add font to jsPDF
-    doc.addFileToVFS('NotoSansTamil.ttf', fontBase64);
-    doc.addFont('NotoSansTamil.ttf', 'NotoSansTamil', 'normal');
-    doc.setFont('NotoSansTamil');
-    
-    // 4. Verify font loaded
-    if (!doc.getFontList()['NotoSansTamil']) {
-      throw new Error('Font loaded but not available in font list');
+    if (!customerName || !mobileNumber) {
+      alert('Please enter customer name and mobile number!');
+      return;
     }
-  } catch (error) {
-    console.error('PDF Generation Error:', error);
-    doc.setFont('helvetica'); // Fallback to built-in font
-  }
 
-  // Rest of your PDF generation code remains the same...
-  doc.setFontSize(20);
-  doc.text(shopName, 105, 20, { align: 'center' });
-  
-  // Bill title
-  doc.setFontSize(16);
-  doc.text('பில்', 105, 30, { align: 'center' });
+    const doc = new jsPDF();
 
-  // Customer details
-  doc.setFontSize(12);
-  doc.text(`வாடிக்கையாளர்: ${customerName}`, 20, 40);
-  doc.text(`மொபைல் எண்: ${mobileNumber}`, 20, 50);
-  doc.text(`தேதி: ${date}`, 20, 60);
+    try {
+      const fontPath = '/fonts/NotoSansTamil-Regular.ttf';
+      const response = await fetch(fontPath);
+      
+      if (!response.ok) {
+        throw new Error(`Font file not found (HTTP ${response.status})`);
+      }
+      
+      const fontData = await response.arrayBuffer();
+      const binaryString = Array.from(new Uint8Array(fontData))
+        .map(byte => String.fromCharCode(byte))
+        .join('');
+      const fontBase64 = window.btoa(binaryString);
 
-  // Prepare table data
-  const tableData = billItems.map((item, index) => [
-    index + 1,
-    item.productNameTamil || item.productName,
-    item.quantity,
-    `₹${item.price.toFixed(2)}`,
-    `₹${item.total.toFixed(2)}`
-  ]);
-
-  // Generate the table
-  autoTable(doc, {
-    head: [['வ.எண்', 'பொருள்', 'அளவு', 'விலை', 'மொத்தம்']],
-    body: tableData,
-    startY: 70,
-    styles: { 
-      font: doc.getFont().fontName,
-      fontSize: 10,
-      cellPadding: 3,
-      overflow: 'linebreak'
-    },
-    headStyles: { 
-      fillColor: [22, 160, 133],
-      textColor: [255, 255, 255],
-      fontStyle: 'bold'
-    },
-    columnStyles: {
-      0: { halign: 'center' }, // Serial number
-      2: { halign: 'center' }, // Quantity
-      3: { halign: 'right' },  // Price
-      4: { halign: 'right' }   // Total
+      doc.addFileToVFS('NotoSansTamil.ttf', fontBase64);
+      doc.addFont('NotoSansTamil.ttf', 'NotoSansTamil', 'normal');
+      doc.setFont('NotoSansTamil', 'normal');
+    } catch (error) {
+      console.error('Font loading error:', error);
+      doc.setFont('helvetica');
     }
-  });
 
-  // Calculate and display total
-  const finalY = doc.lastAutoTable.finalY + 10;
-  doc.setFontSize(14);
-  doc.text('மொத்த தொகை:', 140, finalY);
-  doc.text(`₹${calculateTotal().toFixed(2)}`, 170, finalY);
+    doc.setProperties({
+      title: `Bill for ${customerName}`,
+      subject: 'Invoice',
+      author: shopName,
+      keywords: 'invoice, bill, tamil'
+    });
 
-  // Thank you message
-  doc.setFontSize(12);
-  doc.text('உங்கள் வாங்குதலுக்கு நன்றி!', 105, finalY + 20, { align: 'center' });
+    doc.setFontSize(20);
+    doc.text(shopName, 105, 20, { align: 'center' });
+    doc.setFontSize(16);
+    doc.text('பில்', 105, 30, { align: 'center' });
 
-  // Save the PDF
-  doc.save(`${customerName}_${date}_bill.pdf`);
-};
+    doc.setFontSize(12);
+    doc.text(`வாடிக்கையாளர்: ${customerName}`, 20, 40);
+    doc.text(`மொபைல் எண்: ${mobileNumber}`, 20, 50);
+    doc.text(`தேதி: ${date}`, 20, 60);
+
+    const tableData = billItems.map((item, index) => [
+      index + 1,
+      item.productNameTamil || item.productName,
+      item.quantity,
+      `₹${item.price.toFixed(2)}`,
+      `₹${item.total.toFixed(2)}`
+    ]);
+
+    autoTable(doc, {
+      head: [['வ.எண்', 'பொருள்', 'அளவு', 'விலை', 'மொத்தம்']],
+      body: tableData,
+      startY: 70,
+      styles: { 
+        font: 'NotoSansTamil',
+        fontStyle: 'normal',
+        fontSize: 10,
+        cellPadding: 3
+      },
+      headStyles: { 
+        fillColor: [22, 160, 133],
+        textColor: [255, 255, 255]
+      },
+      columnStyles: {
+        0: { halign: 'center' },
+        2: { halign: 'center' },
+        3: { halign: 'right' },
+        4: { halign: 'right' }
+      }
+    });
+
+    const finalY = doc.lastAutoTable.finalY + 10;
+    doc.setFontSize(14);
+    doc.text('மொத்த தொகை:', 105, finalY);
+    doc.text(`₹${calculateTotal().toFixed(2)}`, 170, finalY);
+
+    doc.setFontSize(12);
+    doc.text('உங்கள் வாங்குதலுக்கு நன்றி!', 105, finalY + 20, { align: 'center' });
+
+    doc.save(`${customerName}_${date}_bill.pdf`);
+  };
 
   // Print bill
   const handlePrint = useReactToPrint({
-    content: () => billPreviewRef.current,
+    content: () => {
+      if (!billPreviewRef.current) {
+        console.error("Print content not found");
+        setPrintError('Print content not ready. Please try again.');
+        return null;
+      }
+      return billPreviewRef.current;
+    },
+    onBeforeGetContent: () => {
+      if (billItems.length === 0) {
+        setPrintError('No items to print!');
+        return false;
+      }
+      if (!customerName || !mobileNumber) {
+        setPrintError('Please enter customer details!');
+        return false;
+      }
+      setPrintError(null);
+      return true;
+    },
+    onPrintError: (error) => {
+      console.error('Printing error:', error);
+      let errorMessage = 'Printing failed. Please try again.';
+      
+      if (error.message.includes('contentRef')) {
+        errorMessage = 'Print content not available';
+      } else if (error.message.includes('print')) {
+        errorMessage = 'Printer not available or error occurred';
+      }
+      
+      setPrintError(errorMessage);
+    },
+    onAfterPrint: () => {
+      console.log('Print completed or dialog closed');
+      setIsPrinting(false);
+    }
   });
 
   // Search product functionality
@@ -244,6 +279,7 @@ const generateTamilPDF = async () => {
     setSelectedItem(item);
     setSearchQuery(item.name);
     setOpenSuggestions(false);
+    setHighlightedIndex(-1);
   };
 
   // Close search suggestions
@@ -251,7 +287,7 @@ const generateTamilPDF = async () => {
     setOpenSuggestions(false);
   };
 
-  // Translations (English & Tamil)
+  // Translations
   const translations = {
     english: {
       customerName: 'Customer Name',
@@ -290,6 +326,104 @@ const generateTamilPDF = async () => {
   };
 
   const t = translations[language];
+
+  // Bill Preview Component
+  const BillPreview = React.forwardRef((props, ref) => {
+    const { 
+      shopName, 
+      customerName, 
+      mobileNumber, 
+      date, 
+      billItems = [], 
+      total = 0, 
+      language = 'english' 
+    } = props;
+
+    const translations = {
+      english: {
+        bill: 'BILL',
+        customer: 'Customer',
+        mobile: 'Mobile',
+        date: 'Date',
+        sno: 'S.No',
+        product: 'Product',
+        quantity: 'Qty',
+        price: 'Price',
+        total: 'Total',
+        grandTotal: 'Grand Total',
+        thankYou: 'Thank you for your purchase!'
+      },
+      tamil: {
+        bill: 'பில்',
+        customer: 'வாடிக்கையாளர்',
+        mobile: 'மொபைல் எண்',
+        date: 'தேதி',
+        sno: 'வ.எண்',
+        product: 'பொருள்',
+        quantity: 'அளவு',
+        price: 'விலை',
+        total: 'மொத்தம்',
+        grandTotal: 'மொத்த தொகை',
+        thankYou: 'உங்கள் வாங்குதலுக்கு நன்றி!'
+      }
+    };
+
+    const t = translations[language] || translations.english;
+
+    return (
+      <div ref={ref} style={{ padding: '20px', fontFamily: "'Noto Sans Tamil', sans-serif" }}>
+        <h2 style={{ textAlign: 'center' }}>{shopName}</h2>
+        <h3 style={{ textAlign: 'center' }}>{t.bill}</h3>
+        
+        <div style={{ marginBottom: '20px' }}>
+          <p><strong>{t.customer}:</strong> {customerName}</p>
+          <p><strong>{t.mobile}:</strong> {mobileNumber}</p>
+          <p><strong>{t.date}:</strong> {date}</p>
+        </div>
+        
+        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px' }}>
+          <thead>
+            <tr style={{ backgroundColor: '#f5f5f5' }}>
+              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>{t.sno}</th>
+              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>{t.product}</th>
+              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>{t.quantity}</th>
+              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>{t.price}</th>
+              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>{t.total}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {billItems.length > 0 ? (
+              billItems.map((item, index) => (
+                <tr key={item.id}>
+                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{index + 1}</td>
+                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>
+                    {language === 'tamil' ? (item.productNameTamil || item.productName) : item.productName}
+                  </td>
+                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{item.quantity}</td>
+                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>₹{item.price.toFixed(2)}</td>
+                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>₹{item.total.toFixed(2)}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="5" style={{ textAlign: 'center', padding: '8px' }}>
+                  No items to print
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        
+        <div style={{ textAlign: 'right', marginTop: '20px' }}>
+          <h3>{t.grandTotal}: ₹{total.toFixed(2)}</h3>
+        </div>
+        
+        <div style={{ textAlign: 'center', marginTop: '40px' }}>
+          <p>{t.thankYou}</p>
+        </div>
+      </div>
+    );
+  });
 
   return (
     <div style={{ fontFamily: "'Noto Sans Tamil', 'Roboto', sans-serif", padding: '20px' }}>
@@ -335,6 +469,16 @@ const generateTamilPDF = async () => {
             onChange={handleSearchChange}
             fullWidth
             margin="normal"
+            autoComplete="off"
+            inputRef={(input) => {
+              if (input) {
+                input.addEventListener('blur', (e) => {
+                  if (!e.relatedTarget || !e.relatedTarget.closest('.MuiPopper-root')) {
+                    setOpenSuggestions(false);
+                  }
+                });
+              }
+            }}
             InputProps={{
               endAdornment: searchQuery && (
                 <IconButton
@@ -342,11 +486,32 @@ const generateTamilPDF = async () => {
                   onClick={() => {
                     setSearchQuery('');
                     setSelectedItem(null);
+                    setOpenSuggestions(false);
                   }}
                 >
                   <CloseIcon fontSize="small" />
                 </IconButton>
               )
+            }}
+            onKeyDown={(e) => {
+              if (filteredItems.length > 0) {
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setHighlightedIndex(prev => 
+                    prev >= filteredItems.length - 1 ? 0 : prev + 1
+                  );
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setHighlightedIndex(prev => 
+                    prev <= 0 ? filteredItems.length - 1 : prev - 1
+                  );
+                } else if (e.key === 'Enter' && highlightedIndex >= 0) {
+                  e.preventDefault();
+                  handleSelectItem(filteredItems[highlightedIndex]);
+                } else if (e.key === 'Escape') {
+                  setOpenSuggestions(false);
+                }
+              }
             }}
           />
         </div>
@@ -355,29 +520,55 @@ const generateTamilPDF = async () => {
         <Popper
           open={openSuggestions && filteredItems.length > 0}
           anchorEl={anchorRef.current}
-          role={undefined}
+          role="listbox"
           placement="bottom-start"
-          style={{ zIndex: 1, width: anchorRef.current?.clientWidth }}
+          style={{ 
+            zIndex: 1, 
+            width: anchorRef.current?.clientWidth,
+            maxHeight: '300px',
+            overflow: 'auto'
+          }}
+          disableAutoFocus
+          disableEnforceFocus
+          modifiers={[
+            {
+              name: 'preventOverflow',
+              options: {
+                padding: 8,
+              },
+            },
+          ]}
         >
-          <ClickAwayListener onClickAway={handleCloseSuggestions}>
-            <Paper>
-              <MenuList autoFocusItem={openSuggestions}>
-                {filteredItems.map(item => (
-                  <MenuItem
-                    key={item.id}
-                    onClick={() => handleSelectItem(item)}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
-                      <span>{item.name} ({item.nameTamil})</span>
-                      <span style={{ color: '#666', marginLeft: '10px' }}>
-                        ₹{item.price.toFixed(2)}
-                      </span>
-                    </div>
-                  </MenuItem>
-                ))}
-              </MenuList>
-            </Paper>
-          </ClickAwayListener>
+          <Paper elevation={3}>
+            <MenuList 
+              autoFocus={false}
+              disablePadding
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setOpenSuggestions(false);
+                }
+              }}
+            >
+              {filteredItems.map((item, index) => (
+                <MenuItem
+                  key={item.id}
+                  onClick={() => handleSelectItem(item)}
+                  selected={highlightedIndex === index}
+                  style={{
+                    backgroundColor: highlightedIndex === index ? '#f5f5f5' : 'transparent',
+                    padding: '8px 16px'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                    <span>{item.name} ({item.nameTamil})</span>
+                    <span style={{ color: '#666', marginLeft: '10px' }}>
+                      ₹{item.price.toFixed(2)}
+                    </span>
+                  </div>
+                </MenuItem>
+              ))}
+            </MenuList>
+          </Paper>
         </Popper>
 
         {/* Quantity Input */}
@@ -536,57 +727,43 @@ const generateTamilPDF = async () => {
             variant="contained"
             color="secondary"
             startIcon={<PrintIcon />}
-            onClick={handlePrint}
-            disabled={billItems.length === 0 || !customerName || !mobileNumber}
+            onClick={() => {
+              if (billItems.length === 0) {
+                setPrintError('No items to print!');
+                return;
+              }
+              if (!customerName || !mobileNumber) {
+                setPrintError('Please enter customer details!');
+                return;
+              }
+              handlePrint();
+            }}
+            disabled={isPrinting}
           >
-            {t.printBill}
+            {isPrinting ? 'Printing...' : t.printBill}
           </Button>
+        </div>
+      )}
+
+      {/* Error message for printing */}
+      {printError && (
+        <div style={{ color: 'red', marginTop: '10px' }}>
+          {printError}
         </div>
       )}
 
       {/* Hidden Bill Preview for Printing */}
       <div style={{ display: 'none' }}>
-        <div ref={billPreviewRef} style={{ padding: '20px' }}>
-          <h2 style={{ textAlign: 'center' }}>{shopName}</h2>
-          <h3 style={{ textAlign: 'center' }}>BILL</h3>
-          
-          <div style={{ marginBottom: '20px' }}>
-            <p><strong>Customer:</strong> {customerName}</p>
-            <p><strong>Mobile:</strong> {mobileNumber}</p>
-            <p><strong>Date:</strong> {date}</p>
-          </div>
-          
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px' }}>
-            <thead>
-              <tr style={{ backgroundColor: '#f5f5f5' }}>
-                <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>S.No</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>Product</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>Qty</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>Price</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {billItems.map((item, index) => (
-                <tr key={item.id}>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{index + 1}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{item.productName}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{item.quantity}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>₹{item.price.toFixed(2)}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>₹{item.total.toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          
-          <div style={{ textAlign: 'right', marginTop: '20px' }}>
-            <h3>Grand Total: ₹{calculateTotal().toFixed(2)}</h3>
-          </div>
-          
-          <div style={{ textAlign: 'center', marginTop: '40px' }}>
-            <p>Thank you for your purchase!</p>
-          </div>
-        </div>
+        <BillPreview 
+          ref={billPreviewRef}
+          shopName={shopName}
+          customerName={customerName}
+          mobileNumber={mobileNumber}
+          date={date}
+          billItems={billItems}
+          total={calculateTotal()}
+          language={language}
+        />
       </div>
     </div>
   );

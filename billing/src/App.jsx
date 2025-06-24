@@ -8,7 +8,7 @@ import './App.css';
 
 function App() {
   const [language, setLanguage] = useState('english');
-  const [shopName, setShopName] = useState('எங்கள் கடை / Our Shop');
+  const [shopName, setShopName] = useState('ராஜா ஸ்நாக்ஸ் /RAJA SNACKS');
 
   return (
     <Router>

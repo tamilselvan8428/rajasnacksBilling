@@ -2,8 +2,8 @@ import React from 'react';
 import { forwardRef } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableRow, Paper } from '@mui/material';
 
-const BillPreview = forwardRef(({ shopName, customerName, mobileNumber, date, items, total, language = 'tamil' }, ref) => {
-  // Define translations inside the component to ensure they're always available
+const BillPreview = React.forwardRef(({ shopName, customerName, mobileNumber, date, items, total, language }, ref) => {
+// Define translations inside the component to ensure they're always available
   const translations = {
     tamil: {
       bill: 'பில்',
